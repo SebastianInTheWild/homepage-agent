@@ -197,6 +197,41 @@ def update_service(config_dir, backup_dir, group, name, new_name=None, descripti
     _write(path, text, backup_dir)
 
 
+def remove_service(config_dir, backup_dir, group, name):
+    """Entfernt einen Eintrag (und die Gruppe, falls sie danach leer ist) – als Text."""
+    path = Path(config_dir) / "services.yaml"
+    original = path.read_text(encoding="utf-8")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    lines = original.replace("\r\n", "\n").split("\n")
+
+    start, end = _group_range(lines, group)
+    if start is None:
+        raise ValueError(f"Gruppe „{group}“ nicht gefunden")
+    entry_re = re.compile(rf"""^(\s+)-\s+["']?{re.escape(name)}["']?\s*:\s*$""")
+    pos = next((i for i in range(start + 1, end) if entry_re.match(lines[i])), None)
+    if pos is None:
+        raise ValueError(f"„{name}“ nicht in Gruppe „{group}“ gefunden")
+    indent = _indent(lines[pos])
+    stop = next((i for i in range(pos + 1, end) if lines[i].strip() and _indent(lines[i]) <= indent), end)
+    while stop > pos + 1 and not lines[stop - 1].strip():
+        stop -= 1
+    cut_from = pos - 1 if pos - 1 > start and not lines[pos - 1].strip() else pos
+    del lines[cut_from:stop]
+    g_start, g_end = _group_range(lines, group)
+    if g_start is not None and not any(line.strip() and not line.lstrip().startswith("#")
+                                       for line in lines[g_start + 1:g_end]):
+        while g_start > 0 and not lines[g_start - 1].strip():
+            g_start -= 1
+        del lines[g_start:g_end]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    text = newline.join(lines) + newline
+
+    if any(e["name"] == name and e["top"] == group for e in iter_services(yaml.safe_load(text))):
+        raise ValueError("Eintrag wäre stehen geblieben – services.yaml bleibt unverändert")
+    _write(path, text, backup_dir)
+
+
 def _write(path, text, backup_dir):
     """Prüfen, Sicherung anlegen, dann atomar schreiben und Besitzer/Rechte der alten Datei übernehmen."""
     empty = [str(next(iter(g))) for g in yaml.safe_load(text) or [] if isinstance(g, dict) and not next(iter(g.values()))]

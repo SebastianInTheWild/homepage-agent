@@ -90,3 +90,16 @@ Für bekannte Apps, die schon in Homepage stehen (services.yaml oder Labels), sc
 Nachricht „Überarbeiten“ vor: sprechender Name (nur wenn der jetzige technisch klingt), englische
 Kurzbeschreibung und passende Gruppe – alt → neu. **Übernehmen** ändert die services.yaml gezielt als Text
 (Rest der Datei bleibt unverändert, Backup vorher) bzw. die Labels im Portainer-Stack.
+
+## Links aus Slack in eine zweite Homepage (z. B. Arbeitslinks)
+
+Mit `WORK_SLACK_CHANNEL_ID` und `WORK_HOMEPAGE_CONFIG` (Config-Ordner der zweiten Instanz) übernimmt der Agent
+jeden Link, der in diesem Channel gepostet wird, sofort in deren `services.yaml` und antwortet im Thread mit
+**Anpassen …** und **Entfernen**. Der Bot muss im Channel sein (`/invite @homepage-agent`), die Slack-App braucht
+die Events aus dem Manifest (`message.channels`, `message.groups`).
+
+- Eine Zeile = ein Link. Text in derselben Zeile wird zum Namen: `Onboarding-Doku https://…`
+- Ohne Text kommt der Name aus der URL (Confluence-Seite, Jira-Vorgang/Board, ServiceNow-Ticket) oder dem Seitentitel.
+- Gruppe nach Dienst (Microsoft, Confluence, Jira, ServiceNow, sonst Links); eine Zeile `Gruppe: Projekt X`
+  legt sie für alle Links der Nachricht fest.
+- Dieselbe URL wird nicht doppelt eingetragen. Backups in `data/backups-work/`.

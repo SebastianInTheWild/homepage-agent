@@ -44,6 +44,8 @@ class Settings:
     candidate_sources: list
     probe_dns: bool
     run_on_start: bool
+    work_config_dir: Path
+    work_channel: str
 
     @classmethod
     def from_env(cls):
@@ -73,4 +75,6 @@ class Settings:
             candidate_sources=_list("CANDIDATE_SOURCES") or ["npm"],
             probe_dns=_bool("PROBE_DNS", True),
             run_on_start=_bool("RUN_ON_START", False),
+            work_config_dir=Path(_env("WORK_CONFIG_DIR", "/work-config")),
+            work_channel=_env("WORK_SLACK_CHANNEL_ID"),
         )

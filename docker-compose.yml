@@ -28,7 +28,10 @@ services:
       TZ: Europe/Berlin
       HOMEPAGE_CONFIG_DIR: /config
       DATA_DIR: /data
+      WORK_SLACK_CHANNEL_ID: ${WORK_SLACK_CHANNEL_ID:-}
     volumes:
       - ${HOMEPAGE_CONFIG:?HOMEPAGE_CONFIG fehlt}:/config
       - ${DATA_PATH:?DATA_PATH fehlt}:/data
+      # zweite Homepage-Instanz für Links aus WORK_SLACK_CHANNEL_ID (optional)
+      - ${WORK_HOMEPAGE_CONFIG:-./work-config}:/work-config
       - /var/run/docker.sock:/var/run/docker.sock:ro

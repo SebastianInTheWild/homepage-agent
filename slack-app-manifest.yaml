@@ -12,6 +12,10 @@ oauth_config:
       - channels:history  # für „reset“: eigene Nachrichten im Channel finden und löschen
       - groups:history    # dasselbe für private Channels
 settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels  # Links aus dem Arbeits-Channel übernehmen
+      - message.groups
   interactivity:
     is_enabled: true
   socket_mode_enabled: true

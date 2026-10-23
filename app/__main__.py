@@ -64,6 +64,10 @@ def main():
     # Socket Mode: Slack ruft nicht per HTTP an, daher keine Signaturprüfung (kein Signing Secret nötig)
     app = App(token=settings.slack_bot_token, request_verification_enabled=False)
     slack_ui.register(app, settings)
+    if settings.work_channel:
+        from . import slack_worklinks
+        slack_worklinks.register(app, settings)
+        log.info("Links aus Channel %s → %s", settings.work_channel, settings.work_config_dir)
 
     def job(force=False):
         try:

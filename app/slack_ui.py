@@ -62,7 +62,8 @@ def target_text(c):
 
 def candidate_blocks(c, groups=None, status=None):
     verdict = (c.get("health") or {}).get("verdict")
-    title = (f":broom: *{c['name']}* steht in Homepage, aber der Dienst ist weg" if c.get("in_homepage")
+    title = (f":broom: Proxy-Host `{c['hosts'][0]}` für *{c['name']}* funktioniert nicht "
+             f"(ein Eintrag „{c['name']}“ steht bereits in Homepage)" if c.get("in_homepage")
              else f"*{c['name']}*  ·  {c['href'] or '_keine URL gefunden – über „Anpassen“ ergänzen_'}")
     lines = [title]
     if c.get("description") and not c.get("in_homepage"):
@@ -173,8 +174,8 @@ def post_report(client, settings, report, force=False):
                 f"{verdicts[health.CHECK]} prüfen · :red_circle: {verdicts[health.LEFTOVER]} vermutlich Reste"))
         n_rest = sum(1 for c in report.missing if c.id in new_ids and c.in_homepage)
         if n_rest:
-            blocks.append(_section(f":broom: *{n_rest} Einträge in Homepage, deren Dienst nicht mehr läuft* "
-                                   "– Löschen empfohlen"))
+            blocks.append(_section(f":broom: *{n_rest} Proxy-Hosts funktionieren nicht*, obwohl der Dienst in "
+                                   "Homepage steht – Löschen oder Reparieren empfohlen"))
         if report.group_hints:
             blocks.append(_bullets(":card_index_dividers: *Passendere Gruppen*", report.group_hints))
         if waiting:

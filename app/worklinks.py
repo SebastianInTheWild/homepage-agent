@@ -32,7 +32,7 @@ KNOWN = [
     (r"(^|\.)outlook\.(office|office365|live)\.com$", None, "Microsoft", "microsoft-outlook.svg", "Outlook"),
     (r"\.atlassian\.net$", r"^/wiki", "Confluence", "atlassian-confluence.svg", "Confluence"),
     (r"\.atlassian\.net$", None, "Jira", "atlassian-jira.svg", "Jira"),
-    (r"\.service-now\.com$", None, "ServiceNow", "https://www.servicenow.com/favicon.ico", "ServiceNow"),
+    (r"\.service-now\.com$", None, "ServiceNow", None, "ServiceNow"),  # Icon der Instanz
 ]
 
 

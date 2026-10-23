@@ -180,6 +180,41 @@ def post_report(client, settings, report, force=False):
         store.save(st)
 
 
+def reset(client, settings):
+    """Alle eigenen Nachrichten im Channel löschen und den Status zurücksetzen (Sicherung bleibt)."""
+    from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
+
+    client.retry_handlers.append(RateLimitErrorRetryHandler(max_retry_count=5))
+    me = client.auth_test()
+    mine = lambda m: m.get("user") == me["user_id"] or (m.get("bot_id") and m.get("bot_id") == me.get("bot_id"))
+    deleted = 0
+    cursor = None
+    while True:
+        page = client.conversations_history(channel=settings.slack_channel, limit=200, cursor=cursor)
+        for msg in page["messages"]:
+            if msg.get("reply_count"):
+                for reply in client.conversations_replies(channel=settings.slack_channel, ts=msg["ts"],
+                                                          limit=200)["messages"][1:]:
+                    if mine(reply):
+                        client.chat_delete(channel=settings.slack_channel, ts=reply["ts"])
+                        deleted += 1
+            if mine(msg):
+                client.chat_delete(channel=settings.slack_channel, ts=msg["ts"])
+                deleted += 1
+        cursor = (page.get("response_metadata") or {}).get("next_cursor")
+        if not cursor:
+            break
+
+    store = State(settings.data_dir)
+    with LOCK:
+        if store.path.exists():
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            store.path.replace(store.path.with_name(f"state-vor-reset-{stamp}.json"))
+        store.save(store.load())
+    log.info("Reset: %d Nachrichten gelöscht, Status zurückgesetzt", deleted)
+    return deleted
+
+
 def _refresh(client, item):
     try:
         client.chat_update(channel=item["channel"], ts=item["ts"], text=item["candidate"]["name"],

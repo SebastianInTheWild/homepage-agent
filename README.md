@@ -21,6 +21,7 @@ Außerdem meldet der Agent veraltete Einträge (Container weg, VM weg, Domain we
 ```bash
 python -m app dry-run   # nur prüfen und ausgeben
 python -m app check     # sofort prüfen und nach Slack schicken
+python -m app reset     # eigene Slack-Nachrichten löschen, Status zurücksetzen (Sicherung bleibt), neu prüfen
 ```
 
 ## Einrichtung

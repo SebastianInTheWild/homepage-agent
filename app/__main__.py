@@ -3,6 +3,7 @@
     python -m app            Dienst: Slack-Buttons verarbeiten + Prüfung nach Zeitplan
     python -m app check      Einmal prüfen und Bericht nach Slack schicken
     python -m app dry-run    Einmal prüfen und nur hier ausgeben
+    python -m app reset      Eigene Slack-Nachrichten löschen, Status zurücksetzen, neu prüfen
 """
 import argparse
 import logging
@@ -35,7 +36,7 @@ def print_report(report):
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser(description="Prüft, ob alle Homelab-Dienste in Homepage stehen.")
-    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "dry-run"])
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "check", "dry-run", "reset"])
     command = parser.parse_args().command
     settings = Settings.from_env()
 
@@ -64,6 +65,11 @@ def main():
             log.exception("Prüfung fehlgeschlagen")
             app.client.chat_postMessage(channel=settings.slack_channel,
                                         text=f":x: Homepage-Check fehlgeschlagen: {exc}")
+
+    if command == "reset":
+        print(f"{slack_ui.reset(app.client, settings)} Nachrichten gelöscht, Status zurückgesetzt")
+        job(force=True)
+        return
 
     if command == "check":
         job(force=True)

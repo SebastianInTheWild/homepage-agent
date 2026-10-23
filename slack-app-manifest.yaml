@@ -9,6 +9,8 @@ oauth_config:
   scopes:
     bot:
       - chat:write
+      - channels:history  # für „reset“: eigene Nachrichten im Channel finden und löschen
+      - groups:history    # dasselbe für private Channels
 settings:
   interactivity:
     is_enabled: true

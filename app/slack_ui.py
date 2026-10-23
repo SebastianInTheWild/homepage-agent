@@ -185,9 +185,23 @@ def reset(client, settings):
     from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 
     client.retry_handlers.append(RateLimitErrorRetryHandler(max_retry_count=5))
+    from slack_sdk.errors import SlackApiError
+
     me = client.auth_test()
     mine = lambda m: m.get("user") == me["user_id"] or (m.get("bot_id") and m.get("bot_id") == me.get("bot_id"))
-    deleted = 0
+    deleted = skipped = 0
+
+    def delete(msg):
+        nonlocal deleted, skipped
+        if not mine(msg):
+            return
+        try:
+            client.chat_delete(channel=settings.slack_channel, ts=msg["ts"])
+            deleted += 1
+        except SlackApiError as exc:  # z. B. „ist dem Channel beigetreten“ lässt sich nicht löschen
+            skipped += 1
+            log.info("Nicht löschbar (%s): %s", exc.response.get("error"), msg.get("subtype") or msg["ts"])
+
     cursor = None
     while True:
         page = client.conversations_history(channel=settings.slack_channel, limit=200, cursor=cursor)
@@ -195,12 +209,8 @@ def reset(client, settings):
             if msg.get("reply_count"):
                 for reply in client.conversations_replies(channel=settings.slack_channel, ts=msg["ts"],
                                                           limit=200)["messages"][1:]:
-                    if mine(reply):
-                        client.chat_delete(channel=settings.slack_channel, ts=reply["ts"])
-                        deleted += 1
-            if mine(msg):
-                client.chat_delete(channel=settings.slack_channel, ts=msg["ts"])
-                deleted += 1
+                    delete(reply)
+            delete(msg)
         cursor = (page.get("response_metadata") or {}).get("next_cursor")
         if not cursor:
             break
@@ -211,7 +221,7 @@ def reset(client, settings):
             stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             store.path.replace(store.path.with_name(f"state-vor-reset-{stamp}.json"))
         store.save(store.load())
-    log.info("Reset: %d Nachrichten gelöscht, Status zurückgesetzt", deleted)
+    log.info("Reset: %d Nachrichten gelöscht, %d nicht löschbar, Status zurückgesetzt", deleted, skipped)
     return deleted
 
 

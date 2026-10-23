@@ -74,6 +74,10 @@ APPS = [
     (["frigate"], "Frigate", "Video surveillance with object detection", "frigate.png"),
     (["node-red", "nodered"], "Node-RED", "Flow-based automations", "node-red.png"),
     (["zigbee2mqtt"], "Zigbee2MQTT", "Zigbee devices via MQTT", "zigbee2mqtt.png"),
+    (["netalertx", "pialert", "pi-alert"], "NetAlertX", "Network scanner and presence detection", "netalertx.png"),
+    (["watchyourlan"], "WatchYourLAN", "Lightweight network IP scanner", "watchyourlan.png"),
+    (["unifi", "unifi-controller", "unifi-network-application"], "UniFi", "Manage UniFi networks and devices",
+     "unifi.png"),
 ]
 _INDEX = {slug(alias): (name, desc, icon) for aliases, name, desc, icon in APPS for alias in aliases}
 _ALIASES = {name: {slug(a) for a in aliases} for aliases, name, _desc, _icon in APPS}
@@ -149,7 +153,8 @@ CATEGORY_OF = {
     "ntfy": "Communication", "SMTP Relay": "Communication",
     "VS Code Server": "Development", "Gitea": "Development", "Firefox": "Development",
     "Nginx Proxy Manager": "Network", "Technitium DNS": "Network", "Cloudflare Tunnel": "Network",
-    "AdGuard Home": "Network", "Pi-hole": "Network", "OpenSpeedTest": "Network",
+    "AdGuard Home": "Network", "Pi-hole": "Network", "OpenSpeedTest": "Network", "NetAlertX": "Network",
+    "WatchYourLAN": "Network", "UniFi": "Network",
     "Speedtest Tracker": "Monitoring", "What's up Docker": "Monitoring", "Uptime Kuma": "Monitoring",
     "Grafana": "Monitoring", "InfluxDB": "Monitoring", "Proxmox Monitoring": "Monitoring",
     "Proxmox": "Infrastructure", "Portainer": "Infrastructure", "Dockge": "Infrastructure",

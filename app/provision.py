@@ -74,8 +74,10 @@ def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group
         port = labels.get("homepage-agent.port") or (
             cont["private_ports"][0] if len(cont["private_ports"]) == 1 else None)
         shared = (npm_cont and cont["server"] == npm_cont["server"]
-                  and set(npm_cont["networks"]) & set(cont["networks"]))
-        if shared:
+                  and set(npm_cont["networks"]) & set(cont["networks"]) - {"host"})
+        if "host" in cont["networks"]:  # network_mode: host – der Dienst lauscht direkt am Host
+            forward_host, forward_port = cont.get("host_ip") or cont["host"], port
+        elif shared:
             forward_host, forward_port = cont["name"], port
         else:  # NPM erreicht den Container nur über den veröffentlichten Port am Host
             forward_host = cont.get("host_ip") or cont["host"]

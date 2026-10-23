@@ -116,6 +116,10 @@ def build_candidates(npm, records, guests, containers, settings):
     cont_by_name = {c["name"]: c for c in containers}
     cont_by_ip = {ip: c for c in containers for ip in c["ips"]}
     cont_by_port = {(c["host_ip"], p): c for c in containers for p in c["ports"]}
+    for c in containers:  # Host-Netz: keine veröffentlichten Ports, Port steht im Label
+        port = c["labels"].get("homepage-agent.port", "")
+        if "host" in c["networks"] and port.isdigit():
+            cont_by_port.setdefault((c["host_ip"], int(port)), c)
     guest_by_ip = {ip: g for g in guests for ip in g["ips"]}
     guest_by_slug = {slug(g["name"]): g for g in guests}
     targets = Counter(resolve(h["forward_host"]) or h["forward_host"] for h in npm)

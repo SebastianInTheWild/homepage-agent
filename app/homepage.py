@@ -167,6 +167,11 @@ def update_service(config_dir, backup_dir, group, name, new_name=None, descripti
     if new_group and new_group != group:
         cut_from = pos - 1 if pos - 1 > start and not lines[pos - 1].strip() else pos
         del lines[cut_from:stop]
+        # Leere Gruppe entfernen – eine Gruppe ohne Einträge lässt Homepage abstürzen
+        g_start, g_end = _group_range(lines, group)
+        if g_start is not None and not any(line.strip() and not line.lstrip().startswith("#")
+                                           for line in lines[g_start + 1:g_end]):
+            del lines[g_start:g_end]
         target_start, target_end = _group_range(lines, new_group)
         if target_start is None:
             while lines and not lines[-1].strip():
@@ -193,7 +198,11 @@ def update_service(config_dir, backup_dir, group, name, new_name=None, descripti
 
 
 def _write(path, text, backup_dir):
-    """Sicherung anlegen, dann atomar schreiben und Besitzer/Rechte der alten Datei übernehmen."""
+    """Prüfen, Sicherung anlegen, dann atomar schreiben und Besitzer/Rechte der alten Datei übernehmen."""
+    empty = [str(next(iter(g))) for g in yaml.safe_load(text) or [] if isinstance(g, dict) and not next(iter(g.values()))]
+    if empty:
+        raise ValueError(f"Gruppe ohne Einträge ({', '.join(empty)}) würde Homepage abstürzen lassen – "
+                         "services.yaml bleibt unverändert")
     backup_dir = Path(backup_dir)
     backup_dir.mkdir(parents=True, exist_ok=True)
     stat = path.stat() if path.exists() else None

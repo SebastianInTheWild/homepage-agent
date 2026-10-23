@@ -1,5 +1,6 @@
 """Portainer-API: Homepage-Labels in die Compose-Datei eines Stacks schreiben und neu ausrollen."""
 import io
+import time
 from collections import Counter
 
 import requests
@@ -18,8 +19,17 @@ class Portainer:
         self.session.verify = False
         self.session.headers["X-API-Key"] = api_key
 
-    def _request(self, method, path, **kwargs):
-        r = self.session.request(method, f"{self.url}/api{path}", timeout=TIMEOUT, **kwargs)
+    def _request(self, method, path, retries=3, **kwargs):
+        """Bei Verbindungsabbrüchen (z. B. weil NPM gerade neu startet und Portainer dahinter liegt) bis zu
+        dreimal wiederholen – nur für Lesezugriffe; Schreibzugriffe prüft set_labels selbst nach."""
+        for attempt in range(retries):
+            try:
+                r = self.session.request(method, f"{self.url}/api{path}", timeout=TIMEOUT, **kwargs)
+                break
+            except (requests.ConnectionError, requests.Timeout):
+                if attempt == retries - 1:
+                    raise
+                time.sleep(5 * (attempt + 1))
         if not r.ok:
             raise RuntimeError(f"Portainer {method} {path}: {r.status_code} {r.text[:150]}")
         return r.json() if r.content else None
@@ -59,10 +69,17 @@ class Portainer:
 
         out = io.StringIO()
         yaml.dump(doc, out)
-        self._request("PUT", f"/stacks/{stack_id}", params={"endpointId": stack["EndpointId"]}, json={
-            "stackFileContent": out.getvalue(),
-            "env": stack.get("Env") or [],
-            "prune": False,
-            "pullImage": False,
-        })
+        new_content = out.getvalue()
+        try:
+            self._request("PUT", f"/stacks/{stack_id}", retries=1, params={"endpointId": stack["EndpointId"]}, json={
+                "stackFileContent": new_content,
+                "env": stack.get("Env") or [],
+                "prune": False,
+                "pullImage": False,
+            })
+        except (requests.ConnectionError, requests.Timeout):
+            # Verbindung beim Ausrollen weg (z. B. NPM-Neustart): nachsehen, ob die Änderung angekommen ist
+            time.sleep(10)
+            if self._request("GET", f"/stacks/{stack_id}/file")["StackFileContent"] != new_content:
+                raise
         return stack["Name"]

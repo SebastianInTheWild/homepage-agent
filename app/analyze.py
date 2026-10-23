@@ -1,5 +1,6 @@
 """Abgleich: Was läuft im Homelab, was steht in Homepage?"""
 import fnmatch
+import json
 import logging
 import re
 import socket
@@ -270,6 +271,13 @@ def check_labels(containers, npm, zones, records, ok):
     issues = []
     npm_hosts = {d for h in npm for d in h["domains"]}
     for cont in containers:
+        fields = cont["labels"].get("homepage.widget.fields")
+        if fields:
+            try:
+                json.loads(fields)
+            except ValueError:
+                issues.append(f"*{cont['labels'].get('homepage.name') or cont['name']}* (Label an `{cont['name']}`): "
+                              f"`homepage.widget.fields` ist kein gültiges JSON – `{fields}`")
         host = host_of(cont["labels"].get("homepage.href"))
         if not host or sources.is_ip(host) or not any(host == z or host.endswith("." + z) for z in zones):
             continue
@@ -320,6 +328,23 @@ def suggest_group(c, entries, containers, groups, default):
     if default:
         return default
     return "Services" if "Services" in groups or not groups else groups[0]
+
+
+def check_proxmox_nodes(entries, proxmox_doc, guests):
+    """proxmoxNode muss als Schlüssel in proxmox.yaml stehen und ein echter Node sein – sonst keine VM-Daten."""
+    keys = set(proxmox_doc) if isinstance(proxmox_doc, dict) else set()
+    nodes = {g["node"] for g in guests}
+    issues = []
+    for e in entries:
+        node = e["cfg"].get("proxmoxNode")
+        if not node:
+            continue
+        if node not in keys:
+            issues.append(f"*{e['name']}*: `proxmoxNode: {node}` fehlt als Schlüssel in proxmox.yaml "
+                          f"(vorhanden: {', '.join(sorted(keys)) or '–'}) – keine VM-Daten in Homepage")
+        elif nodes and node not in nodes:
+            issues.append(f"*{e['name']}*: Proxmox-Node `{node}` gibt es nicht (Nodes: {', '.join(sorted(nodes))})")
+    return issues
 
 
 def build_revisions(entries, containers, existing_groups, editable, texts, ignored_ids):
@@ -471,7 +496,8 @@ def run(settings, ignored_ids=()):
     return Report(
         missing=missing,
         stale=find_stale(entries, npm, zones, records, guests, containers, reachable, ok),
-        lint=homepage.lint(entries, set(docker_doc) if docker_doc else None),
+        lint=homepage.lint(entries, set(docker_doc) if docker_doc else None) + check_proxmox_nodes(
+            entries, homepage.load_yaml(settings.config_dir / "proxmox.yaml") or {}, guests),
         labels=check_labels(containers, npm, zones, records, ok),
         revisions=build_revisions(entries, containers, existing_groups, editable, texts, set(ignored_ids)),
         provisions=provisions,

@@ -60,7 +60,7 @@ class Report:
     stale: list
     lint: list
     labels: list
-    group_hints: list
+    revisions: list
     provisions: list
     errors: list
     total: int
@@ -322,23 +322,54 @@ def suggest_group(c, entries, containers, groups, default):
     return "Services" if "Services" in groups or not groups else groups[0]
 
 
-def check_groups(entries, containers, existing_groups, texts):
-    """Steht ein vorhandener Eintrag in einer Gruppe, die nicht zum Dienst passt? → Empfehlung."""
-    items = [(e["name"], e["top"], e["cfg"].get("container", ""), host_of(e["cfg"].get("href")), "services.yaml")
-             for e in entries]
-    items += [(c["labels"].get("homepage.name", c["name"]), c["labels"]["homepage.group"], c["name"],
-               host_of(c["labels"].get("homepage.href")), f"Label an `{c['name']}`")
-              for c in containers if c["labels"].get("homepage.group")]
-    hints = []
-    for name, group, container, host, where in items:
-        hit = catalog.lookup(name, container, host.split(".")[0] if host else "")
-        category = catalog.CATEGORY_OF.get(hit[0]) if hit else None
-        if not category:
-            continue  # nur bei bekannten Apps – sonst wäre die Empfehlung geraten
-        wanted = catalog.group_for(category, existing_groups)
-        if slug(group) != slug(wanted):
-            hints.append(f"*{name}* ({where}): Gruppe „{group}“ → besser „{wanted}“ ({category})")
-    return hints
+def build_revisions(entries, containers, existing_groups, editable, texts, ignored_ids):
+    """Bestehende Einträge an den Standard anpassen: sprechender Name, englische Kurzbeschreibung, passende
+    Gruppe. Nur für bekannte Apps (Katalog) – sonst wären die Vorschläge geraten."""
+    by_name = {c["name"]: c for c in containers}
+    items = []
+    for e in entries:
+        if e["group"] != e["top"]:
+            continue  # Untergruppen nicht automatisch umbauen
+        cont = by_name.get(str(e["cfg"].get("container", "")).lower(), {})
+        items.append({"id": f"rev:yaml:{e['top']}/{e['name']}", "where": "services.yaml", "name": e["name"],
+                      "group": e["top"], "description": e["cfg"].get("description") or "",
+                      "container": cont.get("name", ""), "image": cont.get("image", ""),
+                      "host": host_of(e["cfg"].get("href")), "target": None})
+    for c in containers:
+        labels = c["labels"]
+        if not (labels.get("homepage.name") or labels.get("homepage.group")):
+            continue
+        project, service = labels.get("com.docker.compose.project", ""), labels.get("com.docker.compose.service")
+        target = ({"stack": project, "stack_id": editable[project], "service": service}
+                  if c.get("local") and project in editable and service else None)
+        items.append({"id": f"rev:label:{c['server']}/{c['name']}", "where": f"Label an `{c['name']}`",
+                      "name": labels.get("homepage.name", c["name"]), "group": labels.get("homepage.group", ""),
+                      "description": labels.get("homepage.description", ""), "container": c["name"],
+                      "image": c["image"], "host": host_of(labels.get("homepage.href")), "target": target})
+
+    revisions = []
+    for item in items:
+        if item["id"] in ignored_ids:
+            continue
+        sub = item["host"].split(".")[0] if item["host"] else ""
+        hit = catalog.lookup(item["name"], item["container"], sub, catalog._image_name(item["image"]))
+        if not hit:
+            continue
+        name, desc, _icon = catalog.describe(image=item["image"], container=item["container"],
+                                             domain=item["host"] or "", sources=texts)
+        changes = {}
+        if catalog.is_technical_name(item["name"], hit[0]):
+            changes["name"] = [item["name"], hit[0]]
+        if desc and desc.strip().lower() != item["description"].strip().lower():
+            changes["description"] = [item["description"], desc]
+        category = catalog.CATEGORY_OF.get(hit[0])
+        if category:
+            wanted = catalog.group_for(category, existing_groups)
+            if slug(item["group"]) != slug(wanted):
+                changes["group"] = [item["group"], wanted]
+        if changes:
+            revisions.append({**item, "kind": "revision", "changes": changes})
+    return revisions
 
 
 def suggest_icon(c):
@@ -442,7 +473,7 @@ def run(settings, ignored_ids=()):
         stale=find_stale(entries, npm, zones, records, guests, containers, reachable, ok),
         lint=homepage.lint(entries, set(docker_doc) if docker_doc else None),
         labels=check_labels(containers, npm, zones, records, ok),
-        group_hints=check_groups(entries, containers, existing_groups, texts),
+        revisions=build_revisions(entries, containers, existing_groups, editable, texts, set(ignored_ids)),
         provisions=provisions,
         errors=errors,
         total=len(primary),

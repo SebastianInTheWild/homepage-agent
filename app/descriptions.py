@@ -13,6 +13,9 @@ AWESOME_URL = "https://raw.githubusercontent.com/awesome-selfhosted/awesome-self
 CACHE_DAYS = 7
 MAX_LEN = 80
 ENTRY = re.compile(r"^\s*- \[(?P<name>[^\]]+)\]\((?P<url>[^)]+)\)\s*(?:`[^`]*`\s*)?- (?P<desc>.+?)(?:\s*\(\[|\s*`|$)")
+# Docker-Hub-Texte ohne Inhalt („Docker container for X“, „Official image of …“) → lieber Katalog
+NO_CONTENT = re.compile(r"^(a |an |the )?(docker|container|image)\b|\b(docker (container|image)|container for|"
+                        r"image for|official image)\b", re.IGNORECASE)
 REPO = re.compile(r"https://(?:github\.com|gitlab\.com|codeberg\.org)/([\w.-]+/[\w.-]+)")
 
 
@@ -84,7 +87,8 @@ class Descriptions:
         if path not in self.hub:
             try:
                 r = requests.get(f"https://hub.docker.com/v2/repositories/{path}/", timeout=5)
-                self.hub[path] = shorten(r.json().get("description") or "") if r.ok else ""
+                text = shorten(r.json().get("description") or "") if r.ok else ""
+                self.hub[path] = "" if NO_CONTENT.search(text) else text
             except (requests.RequestException, ValueError):
                 self.hub[path] = ""
         return self.hub[path]

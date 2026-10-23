@@ -83,3 +83,10 @@ Jeder Dienst bekommt eine passende Kategorie (Media, Smart Home, Productivity, C
 Network, Monitoring, Infrastructure) – aus dem Katalog oder der Rubrik in awesome-selfhosted. Passt eine
 vorhandene Gruppe (z. B. „SmartHome“, „Homelab“), wird sie benutzt, sonst entsteht die Gruppe beim Eintragen
 neu. Vorhandene Einträge in unpassenden Gruppen meldet die Zusammenfassung mit Empfehlung.
+
+## Bestehende Einträge überarbeiten
+
+Für bekannte Apps, die schon in Homepage stehen (services.yaml oder Labels), schlägt der Agent je eine
+Nachricht „Überarbeiten“ vor: sprechender Name (nur wenn der jetzige technisch klingt), englische
+Kurzbeschreibung und passende Gruppe – alt → neu. **Übernehmen** ändert die services.yaml gezielt als Text
+(Rest der Datei bleibt unverändert, Backup vorher) bzw. die Labels im Portainer-Stack.

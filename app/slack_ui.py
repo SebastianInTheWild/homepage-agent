@@ -110,9 +110,35 @@ def provision_blocks(p, status=None):
     return blocks
 
 
+FIELD_NAMES = {"name": "Name", "description": "Beschreibung", "group": "Gruppe"}
+
+
+def revision_blocks(r, status=None):
+    where = r["where"] + (f" im Stack `{r['target']['stack']}`" if r.get("target") else "")
+    lines = [f":pencil: *{r['name']}* überarbeiten  ·  {where}"]
+    lines += [f"• {FIELD_NAMES[f]}: {('_' + old + '_') if old else '–'}  →  *{new}*"
+              for f, (old, new) in r["changes"].items()]
+    blocks = [_section("\n".join(lines))]
+    changeable = r["where"] == "services.yaml" or r.get("target")
+    if not changeable:
+        blocks.append(_context(":information_source: Labels in diesem Stack kann ich nicht ändern (Git-Stack oder "
+                               "anderer Server) – bitte im Compose selbst anpassen."))
+    if r.get("target"):
+        blocks.append(_context("Beim Übernehmen startet der Container neu."))
+    if status:
+        return blocks + [_context(status)]
+    elements = [_button("ignore", "Ignorieren", r["id"]), _button("later", "Später", r["id"])]
+    if changeable:
+        elements.insert(0, _button("revise", "Übernehmen", r["id"], "primary"))
+    blocks.append({"type": "actions", "block_id": f"act|{r['id']}"[:255], "elements": elements})
+    return blocks
+
+
 def render(item, status=None):
     if item.get("kind") == "provision":
         return provision_blocks(item["candidate"], status)
+    if item.get("kind") == "revision":
+        return revision_blocks(item["candidate"], status)
     return candidate_blocks(item["candidate"], item.get("groups"), status)
 
 
@@ -126,6 +152,7 @@ def post_report(client, settings, report, force=False):
     store = State(settings.data_dir)
     current = {c.id: ("candidate", asdict(c)) for c in report.missing}
     current.update({p["id"]: ("provision", p) for p in report.provisions})
+    current.update({r["id"]: ("revision", r) for r in report.revisions})
     with LOCK:
         st = store.load()
 
@@ -151,7 +178,7 @@ def post_report(client, settings, report, force=False):
 
         new = [i for i in current if i not in st["items"] or st["items"][i]["status"] == "later"]
         waiting = [current[i][1]["name"] for i in current if i in st["items"] and st["items"][i]["status"] == "pending"]
-        issues = sorted(report.stale + report.lint + report.labels + report.group_hints + report.errors)
+        issues = sorted(report.stale + report.lint + report.labels + report.errors)
         if not force and not new and issues == st["last_issues"]:
             log.info("Keine Änderungen – kein Bericht")
             return
@@ -176,8 +203,10 @@ def post_report(client, settings, report, force=False):
         if n_rest:
             blocks.append(_section(f":broom: *{n_rest} Proxy-Hosts funktionieren nicht*, obwohl der Dienst in "
                                    "Homepage steht – Löschen oder Reparieren empfohlen"))
-        if report.group_hints:
-            blocks.append(_bullets(":card_index_dividers: *Passendere Gruppen*", report.group_hints))
+        n_rev = sum(1 for i in new if current[i][0] == "revision")
+        if n_rev:
+            blocks.append(_section(f":pencil: *{n_rev} bestehende Einträge überarbeiten* (Name, Beschreibung, "
+                                   "Gruppe) – je eigene Nachricht"))
         if waiting:
             blocks.append(_section(f":hourglass_flowing_sand: {len(waiting)} warten noch auf deine Entscheidung: "
                                    + ", ".join(waiting)))
@@ -197,7 +226,7 @@ def post_report(client, settings, report, force=False):
         for item_id in new:
             kind, data = current[item_id]
             item = {"status": "pending", "kind": kind, "candidate": data, "groups": report.groups}
-            prefix = ("Neuer Dienst" if kind == "provision" else
+            prefix = ("Neuer Dienst" if kind == "provision" else "Überarbeiten" if kind == "revision" else
                       "Rest in Homepage" if data.get("in_homepage") else "Fehlt in Homepage")
             msg = client.chat_postMessage(channel=settings.slack_channel, blocks=render(item),
                                           text=f"{prefix}: {data['name']}")
@@ -373,6 +402,34 @@ def register(app, settings):
         if not errors:
             item = set_status(item_id, "added")
             _update(client, item, f":white_check_mark: Angelegt von <@{user}>")
+
+    @app.action("revise")
+    def on_revise(ack, body, client):
+        ack()
+        item_id, user = body["actions"][0]["value"], body["user"]["id"]
+        item = load_item(item_id)
+        if not item:
+            return
+        r = item["candidate"]
+        new = {f: change[1] for f, change in r["changes"].items()}
+        _reply(client, item, f":hourglass_flowing_sand: <@{user}> übernimmt die Änderungen an *{r['name']}* …")
+        try:
+            with LOCK:
+                if r.get("target"):
+                    labels = {f"homepage.{f}": v for f, v in new.items()}
+                    Portainer(settings.portainer_url, settings.portainer_api_key, settings.portainer_endpoint_id) \
+                        .set_labels(r["target"]["stack_id"], r["target"]["service"], labels)
+                else:
+                    homepage.update_service(settings.config_dir, settings.data_dir / "backups", r["group"], r["name"],
+                                            new_name=new.get("name"), description=new.get("description"),
+                                            new_group=new.get("group"))
+        except Exception as exc:
+            log.exception("Überarbeiten fehlgeschlagen")
+            _reply(client, item, f":x: Übernehmen fehlgeschlagen: {exc}")
+            return
+        item = set_status(item_id, "added")
+        _update(client, item, f":white_check_mark: Übernommen von <@{user}>")
+        _reply(client, item, ":white_check_mark: Übernommen: " + ", ".join(FIELD_NAMES[f] for f in new))
 
     @app.action("edit")
     def on_edit(ack, body, client):

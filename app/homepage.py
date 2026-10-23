@@ -112,7 +112,88 @@ def add_service(config_dir, backup_dir, group, name, cfg):
 
     if not any(e["name"] == name and e["top"] == group for e in iter_services(yaml.safe_load(text))):
         raise ValueError("Eintrag wäre nicht lesbar gewesen – services.yaml bleibt unverändert")
+    _write(path, text, backup_dir)
 
+
+def _indent(line):
+    return len(line) - len(line.lstrip(" "))
+
+
+def _group_range(lines, group):
+    header = re.compile(rf"""^-\s+["']?{re.escape(group)}["']?\s*:\s*$""")
+    start = next((i for i, line in enumerate(lines) if header.match(line)), None)
+    if start is None:
+        return None, None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("-")), len(lines))
+    return start, end
+
+
+def update_service(config_dir, backup_dir, group, name, new_name=None, description=None, new_group=None):
+    """Name/Beschreibung eines Eintrags ändern und ihn ggf. in eine andere Gruppe verschieben – als Text,
+    damit der Rest der Datei Zeichen für Zeichen bleibt."""
+    path = Path(config_dir) / "services.yaml"
+    original = path.read_text(encoding="utf-8")
+    newline = "\r\n" if "\r\n" in original else "\n"
+    lines = original.replace("\r\n", "\n").split("\n")
+
+    start, end = _group_range(lines, group)
+    if start is None:
+        raise ValueError(f"Gruppe „{group}“ nicht gefunden")
+    entry_re = re.compile(rf"""^(\s+)-\s+["']?{re.escape(name)}["']?\s*:\s*$""")
+    pos = next((i for i in range(start + 1, end) if entry_re.match(lines[i])), None)
+    if pos is None:
+        raise ValueError(f"„{name}“ nicht in Gruppe „{group}“ gefunden")
+    indent = _indent(lines[pos])
+    stop = next((i for i in range(pos + 1, end) if lines[i].strip() and _indent(lines[i]) <= indent), end)
+    while stop > pos + 1 and not lines[stop - 1].strip():
+        stop -= 1
+    block = lines[pos:stop]
+    child = next((_indent(b) for b in block[1:] if b.strip()), indent + 4)
+
+    if description is not None:
+        desc_line = f"{' ' * child}description: {_scalar(description)}"
+        idx = next((i for i, b in enumerate(block) if i and _indent(b) == child
+                    and b.strip().startswith("description:")), None)
+        if idx is None:
+            href = next((i for i, b in enumerate(block) if i and _indent(b) == child
+                         and b.strip().startswith("href:")), 0)
+            block.insert(href + 1, desc_line)
+        else:
+            block[idx] = desc_line
+    final_name = new_name or name
+    if new_name:
+        block[0] = f"{' ' * indent}- {_scalar(new_name)}:"
+
+    if new_group and new_group != group:
+        cut_from = pos - 1 if pos - 1 > start and not lines[pos - 1].strip() else pos
+        del lines[cut_from:stop]
+        target_start, target_end = _group_range(lines, new_group)
+        if target_start is None:
+            while lines and not lines[-1].strip():
+                lines.pop()
+            lines += ["", f"- {_scalar(new_group)}:", *block]
+        else:
+            while target_end > target_start + 1 and not lines[target_end - 1].strip():
+                target_end -= 1
+            lines[target_end:target_end] = ["", *block]
+    else:
+        lines[pos:stop] = block
+    text = newline.join(lines)
+    if not text.endswith(newline):
+        text += newline
+
+    wanted_group = new_group or group
+    entries = list(iter_services(yaml.safe_load(text)))
+    if not any(e["name"] == final_name and e["top"] == wanted_group for e in entries):
+        raise ValueError("Ergebnis wäre nicht lesbar gewesen – services.yaml bleibt unverändert")
+    if description is not None and not any(e["name"] == final_name and e["cfg"].get("description") == description
+                                           for e in entries):
+        raise ValueError("Beschreibung kam nicht an – services.yaml bleibt unverändert")
+    _write(path, text, backup_dir)
+
+
+def _write(path, text, backup_dir):
+    """Sicherung anlegen, dann atomar schreiben und Besitzer/Rechte der alten Datei übernehmen."""
     backup_dir = Path(backup_dir)
     backup_dir.mkdir(parents=True, exist_ok=True)
     stat = path.stat() if path.exists() else None

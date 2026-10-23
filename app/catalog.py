@@ -76,6 +76,14 @@ APPS = [
     (["zigbee2mqtt"], "Zigbee2MQTT", "Zigbee devices via MQTT", "zigbee2mqtt.png"),
 ]
 _INDEX = {slug(alias): (name, desc, icon) for aliases, name, desc, icon in APPS for alias in aliases}
+_ALIASES = {name: {slug(a) for a in aliases} for aliases, name, _desc, _icon in APPS}
+
+
+def is_technical_name(current, catalog_name):
+    """„Pdf“, „Whats Up Docker“ … = aus Domain/Container abgeleitet → durch den sprechenden Namen ersetzen."""
+    if current.lower() == catalog_name.lower():
+        return False  # nur Groß-/Kleinschreibung – kein Vorschlag wert
+    return slug(current) in _ALIASES.get(catalog_name, set()) | {slug(catalog_name)}
 
 
 def _image_name(image):

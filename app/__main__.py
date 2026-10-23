@@ -29,8 +29,12 @@ def print_report(report):
         print(f"NEU    {p['domain']} (Container {p['container']})" + (f"  PROBLEM: {p['problems']}" if p["problems"] else ""))
         for line in provision.describe(p):
             print(f"         {line}")
+    for r in report.revisions:
+        print(f"ÄNDERN {r['name']} ({r['where']})" + ("" if r["target"] or r["where"] == "services.yaml"
+                                                       else "  [nicht automatisch änderbar]"))
+        for field, (old, new) in r["changes"].items():
+            print(f"         {field}: {old or '–'} → {new}")
     for title, items in (("VERALTET", report.stale), ("CONFIG", report.lint), ("LABEL", report.labels),
-                         ("GRUPPE", report.group_hints),
                          ("FEHLER", report.errors)):
         for i in items:
             print(f"{title:<8} {i}")

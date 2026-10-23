@@ -9,7 +9,7 @@ Vorhandene homepage.*-Labels (group, name, icon, description) werden übernommen
 import re
 from collections import Counter
 
-from . import homepage, sources
+from . import catalog, homepage, sources
 from .homepage import host_of
 from .portainer import Portainer
 
@@ -19,10 +19,6 @@ NPM_IMAGE = "nginx-proxy-manager"
 
 def requested(containers):
     return [c for c in containers if c["labels"].get(LABEL)]
-
-
-def _pretty(text):
-    return " ".join(w[:1].upper() + w[1:] for w in re.split(r"[-_.\s]+", text) if w)
 
 
 def _zone_for(domain, zones):
@@ -60,7 +56,7 @@ def _icon(names):
     return "mdi-application-outline"
 
 
-def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group):
+def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group, texts=None):
     npm_hosts = {d for h in npm for d in h["domains"]}
     npm_cont = next((c for c in containers if c.get("local") and NPM_IMAGE in c["image"]), None)
     dns_type, dns_value = dns_target(records, npm_ip)
@@ -100,12 +96,14 @@ def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group
         if cont.get("local") and project in editable and labels.get("com.docker.compose.service"):
             target = {"stack": project, "stack_id": editable[project], "service": labels["com.docker.compose.service"]}
         image = cont["image"].split("/")[-1].split(":")[0]
+        name, description, icon = catalog.describe(image=cont["image"], container=cont["name"], project=project,
+                                                   domain=domain, labels=labels, sources=texts)
         values = {
             "homepage.group": labels.get("homepage.group") or default_group or "Services",
-            "homepage.name": labels.get("homepage.name") or _pretty(domain.split(".")[0]),
+            "homepage.name": labels.get("homepage.name") or name,
             "homepage.href": f"{'https' if cert else 'http'}://{domain}",
-            "homepage.icon": labels.get("homepage.icon") or _icon([cont["name"], image, domain.split(".")[0]]),
-            "homepage.description": labels.get("homepage.description", ""),
+            "homepage.icon": labels.get("homepage.icon") or icon or _icon([cont["name"], image, domain.split(".")[0]]),
+            "homepage.description": labels.get("homepage.description") or description,
         }
         items.append({
             "id": f"new:{domain}",

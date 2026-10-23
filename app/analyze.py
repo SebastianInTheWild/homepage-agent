@@ -7,8 +7,9 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import homepage, provision, sources
+from . import catalog, homepage, provision, sources
 from .homepage import host_of, slug
+from .descriptions import Descriptions
 from .portainer import Portainer
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class Candidate:
     icon: str = ""
     group: str = ""
     origin: str = ""  # npm | dns | docker | proxmox – woraus der Vorschlag entstand
+    project: str = ""
+    oci: dict = field(default_factory=dict)  # Titel/Beschreibung aus den Image-Labels
     compose: dict = field(default_factory=dict)  # Stack/Service, falls lokaler Compose-Container
     target: dict = field(default_factory=dict)  # gesetzt, wenn als Docker-Label eintragbar
 
@@ -73,9 +76,8 @@ def _attach_container(c, cont):
     c.add_slugs(cont["name"], project)
     if cont.get("local") and project and cont["labels"].get("com.docker.compose.service"):
         c.compose = {"project": project, "service": cont["labels"]["com.docker.compose.service"]}
-    desc = cont["labels"].get("org.opencontainers.image.description", "")
-    if desc and len(desc) <= 60 and not c.description:
-        c.description = desc
+    c.project = project
+    c.oci = {k: v for k, v in cont["labels"].items() if k.startswith("org.opencontainers.image.")}
     c.sources.append(f"Container `{cont['name']}` auf `{cont['server']}`")
 
 
@@ -366,6 +368,7 @@ def run(settings, ignored_ids=()):
         editable = safe("portainer", "Portainer", lambda: Portainer(
             settings.portainer_url, settings.portainer_api_key, settings.portainer_endpoint_id).editable_stacks(), {})
 
+    texts = Descriptions(settings.data_dir / "cache")
     missing = []
     for c in candidates:
         if c.origin not in settings.candidate_sources:
@@ -373,7 +376,11 @@ def run(settings, ignored_ids=()):
         if is_known(c, known) or is_ignored(c, set(ignored_ids), settings.ignore):
             continue
         c.group = suggest_group(c, entries, containers, groups, settings.default_group)
-        c.icon = suggest_icon(c)
+        name, description, icon = catalog.describe(image=c.image, container=c.container, project=c.project,
+                                                   domain=c.hosts[0] if c.hosts else "", labels=c.oci,
+                                                   sources=texts)
+        c.name, c.description = name, description or c.description
+        c.icon = icon or suggest_icon(c)
         if c.compose.get("project") in editable:
             c.target = {"stack": c.compose["project"], "stack_id": editable[c.compose["project"]],
                         "service": c.compose["service"]}
@@ -392,7 +399,7 @@ def run(settings, ignored_ids=()):
             except OSError:
                 npm_ip = ""
         provisions = [p for p in provision.plan(containers, npm, zones, records, certs, editable, npm_ip,
-                                                settings.default_group)
+                                                settings.default_group, texts)
                       if p["id"] not in set(ignored_ids)]
 
     return Report(

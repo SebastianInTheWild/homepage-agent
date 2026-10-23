@@ -62,3 +62,10 @@ Der Agent meldet den Dienst in Slack mit **Anlegen**. Danach legt er an, was feh
 DNS-Eintrag (wie die übrigen Proxy-Dienste, z. B. CNAME auf den Proxy-Host), NPM-Proxy-Host (Weiterleitung auf den
 Container-Namen, wenn er im Netz von NPM hängt, sonst auf Host-IP und Port; passendes Wildcard-Zertifikat,
 HTTPS erzwungen) und die Homepage-Labels. Jeder Schritt meldet sich im Thread des Dienstes.
+
+## Namen und Beschreibungen
+
+Sprechende Namen und Icons kommen aus einem Katalog bekannter Homelab-Apps (`app/catalog.py`).
+Die englische Kurzbeschreibung stammt der Reihe nach aus der Liste
+[awesome-selfhosted](https://github.com/awesome-selfhosted/awesome-selfhosted) (CC BY-SA 3.0, wöchentlich
+zwischengespeichert in `data/cache/`), aus Docker Hub, aus dem Katalog oder aus den Image-Metadaten.

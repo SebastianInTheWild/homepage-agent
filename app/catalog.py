@@ -108,7 +108,9 @@ def describe(image="", container="", project="", domain="", labels=None, sources
         fallback, icon = "", None
     desc = ""
     if sources:
-        desc = sources.awesome(image, [*keys, name]) or (sources.docker_hub(image) if image else "")
+        # Stack-Name nur als letzter Versuch: mehrere Apps können sich einen Stack teilen
+        search = [name, *keys[:2], subdomain] if hit else [*keys[:2], subdomain, project]
+        desc = sources.awesome(image, search) or (sources.docker_hub(image) if image else "")
     desc = desc or fallback or _short(labels.get("org.opencontainers.image.description", ""))
     return name, desc, icon
 

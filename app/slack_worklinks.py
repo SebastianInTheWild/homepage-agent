@@ -89,7 +89,7 @@ def register(app, settings):
                                                 text=f":information_source: <{url}> steht schon drin als "
                                                      f"*{found['name']}* (Gruppe *{found['top']}*)")
                         continue
-                    entry = worklinks.build_entry(url, label, group)
+                    entry = worklinks.build_entry(url, label, group, config_dir)
                     entry["name"] = worklinks.unique_name(config_dir, entry["group"], entry["name"])
                     entry["id"] = uuid.uuid4().hex[:12]
                     homepage.add_service(config_dir, backups, entry["group"], entry["name"], _cfg(entry))

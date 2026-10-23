@@ -102,4 +102,8 @@ die Events aus dem Manifest (`message.channels`, `message.groups`).
 - Ohne Text kommt der Name aus der URL (Confluence-Seite, Jira-Vorgang/Board, ServiceNow-Ticket) oder dem Seitentitel.
 - Gruppe nach Dienst (Microsoft, Confluence, Jira, ServiceNow, sonst Links); eine Zeile `Gruppe: Projekt X`
   legt sie für alle Links der Nachricht fest.
+- Icon: für bekannte Portale aus dashboard-icons, sonst das Icon der Website selbst (`<link rel=icon>`, bevorzugt
+  SVG/groß, sonst `/favicon.ico` – nur wenn es wirklich ein Bild liefert, sonst `mdi-web`).
+- Links auf einen Host, der schon in der `services.yaml` steht (z. B. ServiceNow unter eigener Domain), bekommen
+  dessen Gruppe und Icon.
 - Dieselbe URL wird nicht doppelt eingetragen. Backups in `data/backups-work/`.

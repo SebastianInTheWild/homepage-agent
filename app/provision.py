@@ -56,7 +56,12 @@ def _icon(names):
     return "mdi-application-outline"
 
 
-def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group, texts=None):
+def _group(name, cont, domain, texts, existing_groups):
+    category = catalog.category_for(name, cont["image"], [cont["name"], domain.split(".")[0]], texts)
+    return catalog.group_for(category, existing_groups) if category else None
+
+
+def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group, texts=None, existing_groups=()):
     npm_hosts = {d for h in npm for d in h["domains"]}
     npm_cont = next((c for c in containers if c.get("local") and NPM_IMAGE in c["image"]), None)
     dns_type, dns_value = dns_target(records, npm_ip)
@@ -99,7 +104,8 @@ def plan(containers, npm, zones, records, certs, editable, npm_ip, default_group
         name, description, icon = catalog.describe(image=cont["image"], container=cont["name"], project=project,
                                                    domain=domain, labels=labels, sources=texts)
         values = {
-            "homepage.group": labels.get("homepage.group") or default_group or "Services",
+            "homepage.group": labels.get("homepage.group") or _group(name, cont, domain, texts, existing_groups)
+                              or default_group or "Services",
             "homepage.name": labels.get("homepage.name") or name,
             "homepage.href": f"{'https' if cert else 'http'}://{domain}",
             "homepage.icon": labels.get("homepage.icon") or icon or _icon([cont["name"], image, domain.split(".")[0]]),

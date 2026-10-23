@@ -7,7 +7,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from . import catalog, homepage, provision, sources
+from . import catalog, health, homepage, provision, sources
 from .homepage import host_of, slug
 from .descriptions import Descriptions
 from .portainer import Portainer
@@ -41,6 +41,9 @@ class Candidate:
     origin: str = ""  # npm | dns | docker | proxmox – woraus der Vorschlag entstand
     project: str = ""
     oci: dict = field(default_factory=dict)  # Titel/Beschreibung aus den Image-Labels
+    forward: dict = field(default_factory=dict)  # Ziel des Proxy-Hosts: host, port
+    health: dict = field(default_factory=dict)  # verdict (active/check/leftover) + reasons
+    in_homepage: bool = False  # steht schon in Homepage, wird nur als Rest gemeldet
     compose: dict = field(default_factory=dict)  # Stack/Service, falls lokaler Compose-Container
     target: dict = field(default_factory=dict)  # gesetzt, wenn als Docker-Label eintragbar
 
@@ -57,6 +60,7 @@ class Report:
     stale: list
     lint: list
     labels: list
+    group_hints: list
     provisions: list
     errors: list
     total: int
@@ -126,6 +130,7 @@ def build_candidates(npm, records, guests, containers, settings):
                       href=f"{'https' if h['https'] else 'http'}://{dom}", hosts=list(h["domains"]))
         c.add_slugs(*(d.split(".")[0] for d in h["domains"]))
         c.sources.append(f"Proxy-Host `{dom}` → `{h['forward_host']}:{h['forward_port']}`")
+        c.forward = {"host": h["forward_host"], "port": h["forward_port"]}
         fwd = h["forward_host"]
         ip = resolve(fwd)
         cont = cont_by_name.get(fwd) or cont_by_ip.get(fwd) or cont_by_port.get((ip, h["forward_port"]))
@@ -317,6 +322,25 @@ def suggest_group(c, entries, containers, groups, default):
     return "Services" if "Services" in groups or not groups else groups[0]
 
 
+def check_groups(entries, containers, existing_groups, texts):
+    """Steht ein vorhandener Eintrag in einer Gruppe, die nicht zum Dienst passt? → Empfehlung."""
+    items = [(e["name"], e["top"], e["cfg"].get("container", ""), host_of(e["cfg"].get("href")), "services.yaml")
+             for e in entries]
+    items += [(c["labels"].get("homepage.name", c["name"]), c["labels"]["homepage.group"], c["name"],
+               host_of(c["labels"].get("homepage.href")), f"Label an `{c['name']}`")
+              for c in containers if c["labels"].get("homepage.group")]
+    hints = []
+    for name, group, container, host, where in items:
+        hit = catalog.lookup(name, container, host.split(".")[0] if host else "")
+        category = catalog.CATEGORY_OF.get(hit[0]) if hit else None
+        if not category:
+            continue  # nur bei bekannten Apps – sonst wäre die Empfehlung geraten
+        wanted = catalog.group_for(category, existing_groups)
+        if slug(group) != slug(wanted):
+            hints.append(f"*{name}* ({where}): Gruppe „{group}“ → besser „{wanted}“ ({category})")
+    return hints
+
+
 def suggest_icon(c):
     raw = [c.container, c.image.split("/")[-1].split(":")[0], c.hosts[0].split(".")[0] if c.hosts else "", c.name]
     names = []
@@ -355,13 +379,17 @@ def run(settings, ignored_ids=()):
     guests = safe("proxmox", "Proxmox", lambda: sources.proxmox_guests(
         settings.proxmox_url, settings.proxmox_token_id, settings.proxmox_token_secret),
         []) if settings.proxmox_url else []
-    containers, reachable, docker_errors = sources.docker_containers(docker_doc, settings.docker_host_ip)
+    all_containers, reachable, docker_errors = sources.docker_containers(docker_doc, settings.docker_host_ip)
+    containers = [c for c in all_containers if c["state"] == "running"]
     errors += docker_errors
 
     candidates = build_candidates(npm, records, guests, containers, settings)
     known = known_index(entries, containers)
     label_groups = {c["labels"]["homepage.group"] for c in containers if c["labels"].get("homepage.group")}
-    groups = homepage.group_names(services_doc) + sorted(label_groups - set(homepage.group_names(services_doc)))
+    existing_groups = homepage.group_names(services_doc) + sorted(
+        label_groups - set(homepage.group_names(services_doc)))
+    # Auswahl in Slack: vorhandene Gruppen + passende Kategorien, die es noch nicht gibt
+    groups = list(dict.fromkeys(existing_groups + [catalog.group_for(k, existing_groups) for k in catalog.CATEGORIES]))
 
     editable = {}
     if settings.portainer_url and settings.portainer_api_key:
@@ -369,18 +397,25 @@ def run(settings, ignored_ids=()):
             settings.portainer_url, settings.portainer_api_key, settings.portainer_endpoint_id).editable_stacks(), {})
 
     texts = Descriptions(settings.data_dir / "cache")
+    primary = [c for c in candidates if c.origin in settings.candidate_sources]  # Standard: nur NPM
+    health.assess_all(primary, all_containers, guests)
     missing = []
-    for c in candidates:
-        if c.origin not in settings.candidate_sources:
-            continue  # nur aus der primären Quelle (Standard: NPM) vorschlagen
-        if is_known(c, known) or is_ignored(c, set(ignored_ids), settings.ignore):
+    for c in primary:
+        if is_ignored(c, set(ignored_ids), settings.ignore):
             continue
-        c.group = suggest_group(c, entries, containers, groups, settings.default_group)
+        if is_known(c, known):
+            if c.health.get("verdict") != health.LEFTOVER:
+                continue
+            c.in_homepage = True  # steht in Homepage, aber der Dienst ist tot → als Rest melden
         name, description, icon = catalog.describe(image=c.image, container=c.container, project=c.project,
                                                    domain=c.hosts[0] if c.hosts else "", labels=c.oci,
                                                    sources=texts)
         c.name, c.description = name, description or c.description
         c.icon = icon or suggest_icon(c)
+        category = catalog.category_for(name, c.image, [c.container, c.hosts[0].split(".")[0] if c.hosts else ""],
+                                        texts)
+        c.group = (catalog.group_for(category, existing_groups) if category
+                   else suggest_group(c, entries, containers, existing_groups, settings.default_group))
         if c.compose.get("project") in editable:
             c.target = {"stack": c.compose["project"], "stack_id": editable[c.compose["project"]],
                         "service": c.compose["service"]}
@@ -399,7 +434,7 @@ def run(settings, ignored_ids=()):
             except OSError:
                 npm_ip = ""
         provisions = [p for p in provision.plan(containers, npm, zones, records, certs, editable, npm_ip,
-                                                settings.default_group, texts)
+                                                settings.default_group, texts, existing_groups)
                       if p["id"] not in set(ignored_ids)]
 
     return Report(
@@ -407,8 +442,9 @@ def run(settings, ignored_ids=()):
         stale=find_stale(entries, npm, zones, records, guests, containers, reachable, ok),
         lint=homepage.lint(entries, set(docker_doc) if docker_doc else None),
         labels=check_labels(containers, npm, zones, records, ok),
+        group_hints=check_groups(entries, containers, existing_groups, texts),
         provisions=provisions,
         errors=errors,
-        total=len(candidates),
+        total=len(primary),
         groups=groups,
     )

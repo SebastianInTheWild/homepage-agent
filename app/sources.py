@@ -179,7 +179,7 @@ def _guest_ips(get, guest):
 
 
 def docker_containers(servers, local_host):
-    """Laufende Container aller Server aus Homepages docker.yaml → (Container, erreichbare Server, Fehler)."""
+    """Alle Container (auch gestoppte) der Server aus Homepages docker.yaml → (Container, erreichbare Server, Fehler)."""
     containers, reachable, errors = [], set(), []
     for name, cfg in (servers or {}).items():
         if not isinstance(cfg, dict):
@@ -191,7 +191,7 @@ def docker_containers(servers, local_host):
         else:
             continue
         try:
-            raw = docker.DockerClient(base_url=base, timeout=8).api.containers()
+            raw = docker.DockerClient(base_url=base, timeout=8).api.containers(all=True)
         except Exception as exc:  # docker wirft je nach Fehler sehr unterschiedliche Typen
             errors.append(f"Docker-Server `{name}` nicht erreichbar ({_short(exc)})")
             continue
@@ -203,6 +203,8 @@ def docker_containers(servers, local_host):
                 "host": host,
                 "local": bool(cfg.get("socket")),
                 "name": c["Names"][0].lstrip("/").lower(),
+                "state": c.get("State", ""),  # running, exited, created …
+                "status": c.get("Status", ""),  # z. B. „Exited (0) 3 weeks ago“
                 "image": c.get("Image", ""),
                 "labels": c.get("Labels") or {},
                 "ports": sorted({p["PublicPort"] for p in c.get("Ports", []) if p.get("PublicPort")}),

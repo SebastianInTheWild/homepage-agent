@@ -115,6 +115,70 @@ def describe(image="", container="", project="", domain="", labels=None, sources
     return name, desc, icon
 
 
+# Kategorien = Gruppen in Homepage. Aliase: so heißen passende Gruppen evtl. schon (werden dann weiterbenutzt).
+CATEGORIES = {
+    "Media": ["media", "multimedia", "entertainment", "streaming", "medien"],
+    "Smart Home": ["smarthome", "home automation", "hausautomation", "iot", "energy", "energie"],
+    "Productivity": ["productivity", "office", "documents", "dokumente", "tools", "personal"],
+    "Communication": ["communication", "kommunikation", "notifications", "mail"],
+    "Development": ["development", "dev", "entwicklung", "code"],
+    "Network": ["network", "netzwerk", "networking", "dns", "proxy"],
+    "Monitoring": ["monitoring", "überwachung", "metrics", "status"],
+    "Infrastructure": ["infrastructure", "homelab", "infra", "server", "system", "admin", "management"],
+}
+CATEGORY_OF = {
+    "Plex": "Media", "Overseerr": "Media", "JDownloader": "Media", "FileBot": "Media", "Jellyfin": "Media",
+    "Sonarr": "Media", "Radarr": "Media", "Prowlarr": "Media", "Huntarr": "Media", "Immich": "Media",
+    "Twitch Drops Miner": "Media",
+    "evcc": "Smart Home", "evcc Optimizer": "Smart Home", "Kia/Hyundai Token": "Smart Home",
+    "Home Assistant": "Smart Home", "Home Assistant MCP": "Smart Home", "Mosquitto": "Smart Home",
+    "SOLECTRUS": "Smart Home", "Node-RED": "Smart Home", "Zigbee2MQTT": "Smart Home", "NVR": "Smart Home",
+    "Frigate": "Smart Home", "PhoneBlock": "Smart Home",
+    "Stirling PDF": "Productivity", "Tandoor": "Productivity", "TimeTagger": "Productivity",
+    "KitchenOwl": "Productivity", "Mealie": "Productivity", "Paperless-ngx": "Productivity",
+    "Nextcloud": "Productivity", "Radicale": "Productivity", "Baïkal": "Productivity",
+    "Contacts (CardDAV)": "Productivity", "Wichteln": "Productivity", "Vaultwarden": "Productivity",
+    "ntfy": "Communication", "SMTP Relay": "Communication",
+    "VS Code Server": "Development", "Gitea": "Development", "Firefox": "Development",
+    "Nginx Proxy Manager": "Network", "Technitium DNS": "Network", "Cloudflare Tunnel": "Network",
+    "AdGuard Home": "Network", "Pi-hole": "Network", "OpenSpeedTest": "Network",
+    "Speedtest Tracker": "Monitoring", "What's up Docker": "Monitoring", "Uptime Kuma": "Monitoring",
+    "Grafana": "Monitoring", "InfluxDB": "Monitoring", "Proxmox Monitoring": "Monitoring",
+    "Proxmox": "Infrastructure", "Portainer": "Infrastructure", "Dockge": "Infrastructure",
+    "Homepage": "Infrastructure", "ZimaOS": "Infrastructure", "iVentoy": "Infrastructure",
+}
+# Rubriken von awesome-selfhosted → Kategorie (Stichwort im Abschnittstitel)
+SECTION_KEYWORDS = [
+    ("media", "Media"), ("video", "Media"), ("audio", "Media"), ("music", "Media"), ("photo", "Media"),
+    ("download", "Media"), ("automation", "Smart Home"), ("internet of things", "Smart Home"),
+    ("communication", "Communication"), ("e-mail", "Communication"), ("notification", "Communication"),
+    ("software development", "Development"), ("dns", "Network"), ("proxy", "Network"), ("vpn", "Network"),
+    ("network", "Network"), ("monitoring", "Monitoring"), ("analytics", "Monitoring"),
+    ("status", "Monitoring"), ("dashboard", "Infrastructure"), ("self-hosting", "Infrastructure"),
+    ("container", "Infrastructure"), ("backup", "Infrastructure"), ("recipe", "Productivity"),
+    ("document", "Productivity"), ("calendar", "Productivity"), ("task", "Productivity"),
+    ("time tracking", "Productivity"), ("note", "Productivity"), ("file", "Productivity"),
+    ("password", "Productivity"), ("office", "Productivity"), ("money", "Productivity"),
+]
+
+
+def category_for(name, image="", keys=(), sources=None):
+    """Passende Kategorie für einen Dienst: Katalog, sonst Rubrik in awesome-selfhosted, sonst None."""
+    if name in CATEGORY_OF:
+        return CATEGORY_OF[name]
+    section = sources.section(image, [name, *keys]) if sources else ""
+    for keyword, category in SECTION_KEYWORDS:
+        if keyword in section.lower():
+            return category
+    return None
+
+
+def group_for(category, existing_groups):
+    """Vorhandene Gruppe, die zur Kategorie passt (z. B. „SmartHome“ für Smart Home), sonst die Kategorie selbst."""
+    wanted = {slug(category), *(slug(a) for a in CATEGORIES.get(category, []))}
+    return next((g for g in existing_groups if slug(g) in wanted), category)
+
+
 def _pretty(text):
     return " ".join(w[:1].upper() + w[1:] for w in re.split(r"[-_.\s]+", text or "") if w)
 

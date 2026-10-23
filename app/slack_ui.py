@@ -8,7 +8,7 @@ import json
 import logging
 from dataclasses import asdict
 
-from . import cleanup, homepage, provision
+from . import cleanup, health, homepage, provision
 from .portainer import Portainer
 from .state import LOCK, State
 
@@ -61,22 +61,34 @@ def target_text(c):
 
 
 def candidate_blocks(c, groups=None, status=None):
-    lines = [f"*{c['name']}*  ·  {c['href'] or '_keine URL gefunden – über „Anpassen“ ergänzen_'}"]
+    verdict = (c.get("health") or {}).get("verdict")
+    title = (f":broom: *{c['name']}* steht in Homepage, aber der Dienst ist weg" if c.get("in_homepage")
+             else f"*{c['name']}*  ·  {c['href'] or '_keine URL gefunden – über „Anpassen“ ergänzen_'}")
+    lines = [title]
+    if c.get("description") and not c.get("in_homepage"):
+        lines.append(f"_{c['description']}_")
     lines += [f"• {s}" for s in c["sources"]]
-    blocks = [_section("\n".join(lines)),
-              _context(f"Vorschlag: Gruppe *{c['group']}* · Icon `{c['icon']}` · {target_text(c)}")]
+    blocks = [_section("\n".join(lines))]
+    if verdict:
+        reasons = " · ".join(c["health"]["reasons"])
+        blocks.append(_section(f"{health.TEXT[verdict]}\n{reasons}"))
+    if not c.get("in_homepage"):
+        blocks.append(_context(f"Vorschlag: Gruppe *{c['group']}* · Icon `{c['icon']}` · {target_text(c)}"))
     if status:
         return blocks + [_context(status)]
-    options = [_option(g) for g in dict.fromkeys([*(groups or []), c["group"]])][:100]
-    elements = [
-        {"type": "static_select", "action_id": "group", "options": options, "initial_option": _option(c["group"])},
-        _button("add", "Eintragen", c["id"], "primary"),
-        _button("edit", "Anpassen …", c["id"]),
-        _button("ignore", "Ignorieren", c["id"]),
-        _button("later", "Später", c["id"]),
-    ]
+
+    leftover = verdict == health.LEFTOVER
+    elements = []
+    if not c.get("in_homepage"):
+        options = [_option(g) for g in dict.fromkeys([*(groups or []), c["group"]])][:100]
+        elements += [
+            {"type": "static_select", "action_id": "group", "options": options, "initial_option": _option(c["group"])},
+            _button("add", "Eintragen", c["id"], None if leftover else "primary"),
+            _button("edit", "Anpassen …", c["id"]),
+        ]
     if c.get("hosts"):
         elements.append(_button("delete", "Löschen …", c["id"], "danger"))
+    elements += [_button("ignore", "Ignorieren", c["id"]), _button("later", "Später", c["id"])]
     blocks.append({"type": "actions", "block_id": f"act|{c['id']}"[:255], "elements": elements})
     return blocks
 
@@ -138,20 +150,33 @@ def post_report(client, settings, report, force=False):
 
         new = [i for i in current if i not in st["items"] or st["items"][i]["status"] == "later"]
         waiting = [current[i][1]["name"] for i in current if i in st["items"] and st["items"][i]["status"] == "pending"]
-        issues = sorted(report.stale + report.lint + report.labels + report.errors)
+        issues = sorted(report.stale + report.lint + report.labels + report.group_hints + report.errors)
         if not force and not new and issues == st["last_issues"]:
             log.info("Keine Änderungen – kein Bericht")
             return
 
         now = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
-        known = report.total - len(report.missing)
+        not_in_homepage = [c for c in report.missing if not c.in_homepage]
+        known = report.total - len(not_in_homepage)
         blocks = [_section(f"*Homepage-Check* · {now}\n{report.total} Dienste in NPM gefunden, "
                            f"{known} davon in Homepage oder ignoriert.")]
         n_new_prov = sum(1 for i in new if current[i][0] == "provision")
         if n_new_prov:
             blocks.append(_section(f":sparkles: *{n_new_prov} neue Dienste per Label* zum Anlegen – je eigene Nachricht"))
-        if len(new) - n_new_prov:
-            blocks.append(_section(f":new: *{len(new) - n_new_prov} fehlen in Homepage* – je eigene Nachricht"))
+        new_ids = set(new)
+        verdicts = {v: sum(1 for c in report.missing if c.id in new_ids and c.health.get("verdict") == v
+                           and not c.in_homepage) for v in (health.ACTIVE, health.CHECK, health.LEFTOVER)}
+        if sum(verdicts.values()):
+            blocks.append(_section(
+                f":new: *{sum(verdicts.values())} fehlen in Homepage* – je eigene Nachricht\n"
+                f":large_green_circle: {verdicts[health.ACTIVE]} eintragen · :large_yellow_circle: "
+                f"{verdicts[health.CHECK]} prüfen · :red_circle: {verdicts[health.LEFTOVER]} vermutlich Reste"))
+        n_rest = sum(1 for c in report.missing if c.id in new_ids and c.in_homepage)
+        if n_rest:
+            blocks.append(_section(f":broom: *{n_rest} Einträge in Homepage, deren Dienst nicht mehr läuft* "
+                                   "– Löschen empfohlen"))
+        if report.group_hints:
+            blocks.append(_bullets(":card_index_dividers: *Passendere Gruppen*", report.group_hints))
         if waiting:
             blocks.append(_section(f":hourglass_flowing_sand: {len(waiting)} warten noch auf deine Entscheidung: "
                                    + ", ".join(waiting)))
@@ -171,7 +196,8 @@ def post_report(client, settings, report, force=False):
         for item_id in new:
             kind, data = current[item_id]
             item = {"status": "pending", "kind": kind, "candidate": data, "groups": report.groups}
-            prefix = "Neuer Dienst" if kind == "provision" else "Fehlt in Homepage"
+            prefix = ("Neuer Dienst" if kind == "provision" else
+                      "Rest in Homepage" if data.get("in_homepage") else "Fehlt in Homepage")
             msg = client.chat_postMessage(channel=settings.slack_channel, blocks=render(item),
                                           text=f"{prefix}: {data['name']}")
             item.update(channel=msg["channel"], ts=msg["ts"])

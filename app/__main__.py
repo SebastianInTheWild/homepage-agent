@@ -20,14 +20,17 @@ def print_report(report):
     print(f"{report.total} Dienste gefunden, {len(report.missing)} fehlen in Homepage\n")
     for c in report.missing:
         ziel = f" → Label {c.target['stack']}/{c.target['service']}" if c.target else ""
-        print(f"FEHLT  {c.name:<25} {c.href or '-':<45} Gruppe={c.group} Icon={c.icon}{ziel}")
-        for s in c.sources:
-            print(f"         {s}")
+        art = "REST " if c.in_homepage else "FEHLT"
+        print(f"{art}  {c.name:<22} {c.href or '-':<42} [{c.health.get('verdict', '?')}] Gruppe={c.group}{ziel}")
+        print(f"         {c.description}")
+        for s in c.health.get("reasons", []):
+            print(f"         - {s}")
     for p in report.provisions:
         print(f"NEU    {p['domain']} (Container {p['container']})" + (f"  PROBLEM: {p['problems']}" if p["problems"] else ""))
         for line in provision.describe(p):
             print(f"         {line}")
     for title, items in (("VERALTET", report.stale), ("CONFIG", report.lint), ("LABEL", report.labels),
+                         ("GRUPPE", report.group_hints),
                          ("FEHLER", report.errors)):
         for i in items:
             print(f"{title:<8} {i}")

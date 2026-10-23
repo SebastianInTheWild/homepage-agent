@@ -48,24 +48,31 @@ class Descriptions:
                 log.warning("awesome-selfhosted nicht ladbar (%s) – nutze Zwischenspeicher, falls vorhanden", exc)
         if self.cache.exists():
             text = self.cache.read_text(encoding="utf-8")
+        section = ""
         for line in text.splitlines():
+            if line.startswith("#"):
+                section = line.lstrip("#").strip()  # Rubrik, z. B. „Media Streaming - Video Streaming“
+                continue
             m = ENTRY.match(line)
             if not m:
                 continue
-            desc = shorten(m["desc"])
+            entry = (shorten(m["desc"]), section)
             for repo in REPO.findall(line):
-                self.by_repo.setdefault(repo.lower().removesuffix(".git"), desc)
-                self.by_slug.setdefault(slug(repo.split("/")[1]), desc)
-            self.by_slug.setdefault(slug(re.sub(r"\s+by\s+.*$", "", m["name"])), desc)
+                self.by_repo.setdefault(repo.lower().removesuffix(".git"), entry)
+                self.by_slug.setdefault(slug(repo.split("/")[1]), entry)
+            self.by_slug.setdefault(slug(re.sub(r"\s+by\s+.*$", "", m["name"])), entry)
 
-    def awesome(self, image="", keys=()):
+    def _find(self, image, keys):
         path = _image_path(image)
         if path in self.by_repo:
             return self.by_repo[path]
-        for key in keys:
-            if slug(key) in self.by_slug:
-                return self.by_slug[slug(key)]
-        return ""
+        return next((self.by_slug[slug(k)] for k in keys if slug(k) in self.by_slug), ("", ""))
+
+    def awesome(self, image="", keys=()):
+        return self._find(image, keys)[0]
+
+    def section(self, image="", keys=()):
+        return self._find(image, keys)[1]
 
     def docker_hub(self, image):
         path = _image_path(image)

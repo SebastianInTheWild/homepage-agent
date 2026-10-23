@@ -69,3 +69,17 @@ Sprechende Namen und Icons kommen aus einem Katalog bekannter Homelab-Apps (`app
 Die englische Kurzbeschreibung stammt der Reihe nach aus der Liste
 [awesome-selfhosted](https://github.com/awesome-selfhosted/awesome-selfhosted) (CC BY-SA 3.0, wöchentlich
 zwischengespeichert in `data/cache/`), aus Docker Hub, aus dem Katalog oder aus den Image-Metadaten.
+
+## Lebt der Dienst noch? Empfehlung je Proxy-Host
+
+Für jeden Proxy-Host prüft der Agent das Ziel (Container läuft / gestoppt / gibt es nicht mehr, IP:Port,
+VM/LXC in Proxmox) und den Aufruf über die Domain (502/504 = Ziel tot, keine DNS-Auflösung).
+Daraus wird eine Empfehlung: 🟢 Eintragen · 🟡 Prüfen · 🔴 Löschen (Reste einer alten Konfiguration).
+Auch Dienste, die schon in Homepage stehen, aber tot sind, werden als Rest gemeldet.
+
+## Gruppen
+
+Jeder Dienst bekommt eine passende Kategorie (Media, Smart Home, Productivity, Communication, Development,
+Network, Monitoring, Infrastructure) – aus dem Katalog oder der Rubrik in awesome-selfhosted. Passt eine
+vorhandene Gruppe (z. B. „SmartHome“, „Homelab“), wird sie benutzt, sonst entsteht die Gruppe beim Eintragen
+neu. Vorhandene Einträge in unpassenden Gruppen meldet die Zusammenfassung mit Empfehlung.

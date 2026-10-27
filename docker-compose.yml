@@ -3,6 +3,8 @@ services:
     build: .
     image: homepage-agent:latest
     container_name: homepage-agent
+    labels:
+      - wud.watch=false   # lokal gebautes Image, keine Registry
     restart: unless-stopped
     environment:
       NPM_URL: ${NPM_URL}
